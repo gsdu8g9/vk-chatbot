@@ -1,0 +1,2 @@
+vk-requests==0.9.7
+configparser
