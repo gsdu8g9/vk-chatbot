@@ -25,6 +25,12 @@ def status(bot, **fields):
     return True
 
 
+def help(bot, **fields):
+    bot.api.messages.send(peer_id=fields['peer_id'],
+                          message='Помощь скоро будет! Жди...')
+    return True
+
+
 def hello(bot, **fields):
     if re.match(r'при+ве+т(?:[\s,]+)(?:ма+рку+с|ma+rcu+s)', fields['text'], flags=re.IGNORECASE) \
             if fields['is_chat'] else re.match(r'при+ве+т(?:\W+|$)', fields['text'], flags=re.IGNORECASE):

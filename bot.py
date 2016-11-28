@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import requests
+import commands
 from datetime import datetime
 import vk_requests as vk
 from vk_requests.exceptions import VkAPIError
@@ -64,7 +65,12 @@ class Bot(object):
             self.bot_user = self.api.users.get()[0]
             self.long_poll_server = self.api.messages.getLongPollServer(use_ssl=1)
 
-            self._add_commands()
+            self._add_commands([
+                Command(events['add_message'], commands.status, text='!s', lack_flags=(~message_flags['outbox'])),
+                Command(events['add_message'], commands.hello, lack_flags=(~message_flags['outbox'])),
+                Command(events['add_message'], commands.invite, source_act='chat_invite_user',
+                        source_mid=self.bot_user['id'], lack_flags=(~message_flags['outbox']))
+            ])
         except VkAPIError as e:
             log.exception('Connection failure: {}'.format(e.message))
             return False
@@ -160,15 +166,9 @@ class Bot(object):
     def is_started(self):
         return self.start_time is not None
 
-    def _add_commands(self):
-        import commands
-
-        self.commands = [
-            Command(events['add_message'], commands.status, text='!s', lack_flags=(~message_flags['outbox'])),
-            Command(events['add_message'], commands.hello, lack_flags=(~message_flags['outbox'])),
-            Command(events['add_message'], commands.invite, source_act='chat_invite_user',
-                    source_mid=self.bot_user['id'], lack_flags=(~message_flags['outbox']))
-        ]
+    def _add_commands(self, commands_list):
+        self.commands = commands_list
+        self.commands.append(Command(events['add_message'], commands.help, text="!h"))
 
 
 class Command(object):
