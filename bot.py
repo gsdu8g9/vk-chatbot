@@ -66,7 +66,7 @@ class Bot(object):
             self.long_poll_server = self.api.messages.getLongPollServer(use_ssl=1)
 
             self._add_commands([
-                Command(events['add_message'], commands.status, text='!s', lack_flags=(~message_flags['outbox'])),
+                Command(events['add_message'], commands.status, text=['!s', '!status'], lack_flags=(~message_flags['outbox'])),
                 Command(events['add_message'], commands.hello, lack_flags=(~message_flags['outbox'])),
                 Command(events['add_message'], commands.invite, source_act='chat_invite_user',
                         source_mid=self.bot_user['id'], lack_flags=(~message_flags['outbox']))
@@ -145,8 +145,17 @@ class Bot(object):
                 lack_flags = command.fields.get('lack_flags')
                 source_act = command.fields.get('source_act')
                 source_mid = command.fields.get('source_mid')
+                
+                text_check = False
+                if isinstance(text, (list, tuple)):
+                    for t in text:
+                        if t == fields['text']:
+                            text_check = True
+                            break
+                else:
+                    text_check = (text is None or text == fields['text'])
 
-                if (text is None or text == fields['text']) and (flags is None or fields['flags'] & flags == flags) \
+                if text_check and (flags is None or fields['flags'] & flags == flags) \
                         and (lack_flags is None or fields['flags'] & lack_flags == fields['flags']) \
                         and (source_act is None or source_act == fields['source_act']) \
                         and (source_mid is None or str(source_mid) == str(fields['source_mid'])):
