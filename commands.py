@@ -2,6 +2,7 @@ import os
 import random
 import re
 import logging
+import bot
 from datetime import datetime
 
 log = logging.getLogger('vk-bot')
@@ -15,8 +16,8 @@ def status(bot, **fields):
             server = 'test'
 
         now_time = datetime.now()
-        formatted_text = 'Bot v{}\nUptime: {}\nRunning on: {}'.format(
-            bot.version, now_time - bot.start_time, server
+        formatted_text = '{bot_name} v{bot_version}\nUptime: {start_time}\nRunning on: {server}'.format(
+            bot_name=bot.name, bot_version=bot.version, start_time=now_time - bot.start_time, server=server
         )
         bot.api.messages.send(peer_id=fields['peer_id'], message=formatted_text)
     else:
@@ -26,8 +27,12 @@ def status(bot, **fields):
 
 
 def help(bot, **fields):
-    bot.api.messages.send(peer_id=fields['peer_id'],
-                          message='Помощь скоро будет! Жди...')
+    message = 'Помощь:\n'
+    for event_handler in bot.event_handlers:
+        if event_handler.help_name is not None:
+            message += '{} — {}\n'.format(event_handler.help_name, event_handler.help_description)
+
+    bot.api.messages.send(peer_id=fields['peer_id'], message=message)
     return True
 
 
@@ -36,13 +41,33 @@ def hello(bot, **fields):
             if fields['is_chat'] else re.match(r'при+ве+т(?:\W+|$)', fields['text'], flags=re.IGNORECASE):
         emojies = ['\U0001F60E', '\U0001F60A', '\U0001F603', '\U0001F609']
         bot.api.messages.send(peer_id=fields['peer_id'],
-                              message='Привет, {}! {}{}'.format(
-                                  fields['user']['first_name'], random.choice(emojies), random.choice(emojies))
+                              message='Привет, {name}! {first_emoji}{second_emoji}'.format(
+                                  name=fields['user']['first_name'], first_emoji=random.choice(emojies),
+                                  second_emoji=random.choice(emojies))
                               )
         return True
 
     return False
 
+def change_chat_title(bot, **fields):
+    if fields['user_id'] == bot.admin_id:
+        match = re.match("!title (.+)", fields['text'])
+        if match:
+            bot.chat_titles[fields['chat_id']] = match.group(1)
+            bot.api.messages.editChat(chat_id=fields['chat_id'], title=bot.chat_titles[fields['chat_id']])
+            return True
+
+    return False
+
+def chat_title_update(bot, **fields):
+    if bot.chat_titles.get(fields['chat_id']):
+        bot.api.messages.send(peer_id=fields['peer_id'],
+                              message='низя')
+        bot.api.messages.editChat(chat_id=fields['chat_id'],
+                              title=bot.chat_titles.get(fields['chat_id']))
+        return True
+
+    return False
 
 def invite(bot, **fields):
     bot.api.messages.send(peer_id=fields['peer_id'],

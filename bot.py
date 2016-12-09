@@ -28,16 +28,17 @@ message_flags = {'unread': 1, 'outbox': 2, 'replied': 4, 'important': 8, 'chat':
 
 class Bot(object):
     def __init__(self):
-
         self.start_time = None
         self.api = None
         self.bot_user = None
         self.long_poll_server = None
+        self.chat_titles = {}
         self.lang = 'ru'
 
         try:
             self.config = configparser.ConfigParser()
             self.config.read('config.ini')
+            self.name = self.config['DEFAULT']['Name']
             self.version = self.config['DEFAULT']['Version']
             self.vk_api_version = self.config['DEFAULT']['VkApiVersion']
             self.admin_id = self.config['DEFAULT']['AdminId']
@@ -65,12 +66,7 @@ class Bot(object):
             self.bot_user = self.api.users.get()[0]
             self.long_poll_server = self.api.messages.getLongPollServer(use_ssl=1)
 
-            self._add_commands([
-                Command(events['add_message'], commands.status, text=['!s', '!status'], lack_flags=(~message_flags['outbox'])),
-                Command(events['add_message'], commands.hello, lack_flags=(~message_flags['outbox'])),
-                Command(events['add_message'], commands.invite, source_act='chat_invite_user',
-                        source_mid=self.bot_user['id'], lack_flags=(~message_flags['outbox']))
-            ])
+            self._add_event_handlers()
         except VkAPIError as e:
             log.exception('Connection failure: {}'.format(e.message))
             return False
@@ -130,6 +126,8 @@ class Bot(object):
             fields['user_id'] = fields['attachments'].get('from')
             fields['source_act'] = fields['attachments'].get('source_act')
             fields['source_mid'] = fields['attachments'].get('source_mid')
+            fields['source_old_text'] = fields['attachments'].get('source_old_text')
+            fields['source_text'] = fields['attachments'].get('source_text')
         else:
             fields['is_chat'] = False
             fields['user_id'] = str(fields['peer_id'])
@@ -138,14 +136,14 @@ class Bot(object):
 
         fields['user'] = self.api.users.get(user_ids=fields['user_id'])[0]
 
-        for command in self.commands:
+        for command in self.event_handlers:
             if command.event == events['add_message']:
                 text = command.fields.get('text')
                 flags = command.fields.get('flags')
                 lack_flags = command.fields.get('lack_flags')
                 source_act = command.fields.get('source_act')
                 source_mid = command.fields.get('source_mid')
-                
+
                 text_check = False
                 if isinstance(text, (list, tuple)):
                     for t in text:
@@ -175,17 +173,29 @@ class Bot(object):
     def is_started(self):
         return self.start_time is not None
 
-    def _add_commands(self, commands_list):
-        self.commands = commands_list
-        self.commands.append(Command(events['add_message'], commands.help, text="!h"))
+    def _add_event_handlers(self):
+        self.event_handlers = [
+            EventHandler(events['add_message'], commands.status, text=['!s', '!status'],
+                         lack_flags=(~message_flags['outbox'])),
+            EventHandler(events['add_message'], commands.hello, lack_flags=(~message_flags['outbox'])),
+            EventHandler(events['add_message'], commands.invite, source_act='chat_invite_user',
+                         source_mid=self.bot_user['id'], lack_flags=(~message_flags['outbox'])),
+            EventHandler(events['add_message'], commands.change_chat_title, lack_flags=(~message_flags['outbox'])),
+            EventHandler(events['add_message'], commands.chat_title_update, source_act='chat_title_update',
+                         lack_flags=(~message_flags['outbox'])),
+            EventHandler(events['add_message'], commands.help, text=['!h', '!help'])
+        ]
 
 
-class Command(object):
+class EventHandler(object):
     def __init__(self, event, function, **fields):
         self.event = event
         self.function = function
         self.fields = fields
+        self.help_name = fields.get('help_name')
+        self.help_description = fields.get('help_description')
 
 
+# start bot
 if __name__ == '__main__':
     Bot().start()
