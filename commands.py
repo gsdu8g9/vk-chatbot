@@ -2,14 +2,14 @@ import os
 import random
 import re
 import logging
-import bot
+import bot as botm
 from datetime import datetime
 
 log = logging.getLogger('vk-bot')
 
 
 def status(bot, **fields):
-    if fields['user_id'] == bot.admin_id:
+    if fields['user_id'] in bot.admins:
         if 'PRODUCTION' in os.environ:
             server = 'production'
         else:
@@ -49,27 +49,45 @@ def hello(bot, **fields):
 
     return False
 
+
 def change_chat_title(bot, **fields):
-    if fields['user_id'] == bot.admin_id:
+    if fields['user_id'] in bot.admins:
         match = re.match("!title (.+)", fields['text'])
         if match:
-            bot.chat_titles[fields['chat_id']] = match.group(1)
+            bot.set_chat_title(fields['chat_id'], match.group(1))
             bot.api.messages.editChat(chat_id=fields['chat_id'], title=bot.chat_titles[fields['chat_id']])
             return True
 
     return False
 
+
 def chat_title_update(bot, **fields):
     if bot.chat_titles.get(fields['chat_id']):
         bot.api.messages.send(peer_id=fields['peer_id'],
-                              message='низя')
+                              message='Название беседы заблокировано')
         bot.api.messages.editChat(chat_id=fields['chat_id'],
-                              title=bot.chat_titles.get(fields['chat_id']))
+                                  title=bot.chat_titles.get(fields['chat_id']))
         return True
 
     return False
 
+
 def invite(bot, **fields):
     bot.api.messages.send(peer_id=fields['peer_id'],
                           message='Привет всем!')
+    return True
+
+def chat_kick(bot, **fields):
+    user = bot.api.users.get(user_ids=fields['source_mid'])[0]
+    bot.api.messages.send(peer_id=fields['peer_id'],
+                          message='Мы будем скучать по тебе, {}...'.format(user['first_name']))
+    return True
+
+def chat_invite(bot, **fields):
+    user = bot.api.users.get(user_ids=fields['source_mid'])[0]
+    messages = [
+        'Ну и зачем ты пришёл, {}?'
+    ]
+    bot.api.messages.send(peer_id=fields['peer_id'],
+                          message=random.choice(messages).format(name=user['first_name']))
     return True

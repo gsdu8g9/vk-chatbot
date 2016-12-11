@@ -4,6 +4,8 @@ import os
 import re
 import requests
 import commands
+import json
+from pathlib import Path
 from datetime import datetime
 import vk_requests as vk
 from vk_requests.exceptions import VkAPIError
@@ -12,11 +14,6 @@ CHAT_OFFSET = 2000000000
 
 log = logging.getLogger('vk-bot')
 log.setLevel(logging.DEBUG)
-
-
-def remove_urls(text):
-    return re.sub(r'(\S+\.\S{2,20})+', '[url_removed]', text, 0, 0)
-
 
 events = {'set_flags': 1, 'update_flags': 2, 'reset_flags': 3, 'add_message': 4, 'read_inbox': 6, 'read_outbox': 7,
           'online': 8, 'offline': 9, 'update_chat_params': 51, 'start_typing': 61, 'start_typing_char': 62,
@@ -32,22 +29,17 @@ class Bot(object):
         self.api = None
         self.bot_user = None
         self.long_poll_server = None
-        self.chat_titles = {}
         self.lang = 'ru'
 
         try:
-            self.config = configparser.ConfigParser()
-            self.config.read('config.ini')
-            self.name = self.config['DEFAULT']['Name']
-            self.version = self.config['DEFAULT']['Version']
-            self.vk_api_version = self.config['DEFAULT']['VkApiVersion']
-            self.admin_id = self.config['DEFAULT']['AdminId']
-
-            self.poll_config = {'mode': 170, 'wait': 25, 'version': 1}
+            self._load_config()
+            self._load_data()
         except configparser.Error:
             log.exception('Error while reading config')
         except KeyError:
             log.exception('One or more keys in config are missing')
+
+        self.poll_config = {'mode': 170, 'wait': 25, 'version': 1}
 
         log.info('Initializing...')
 
@@ -66,6 +58,7 @@ class Bot(object):
             self.bot_user = self.api.users.get()[0]
             self.long_poll_server = self.api.messages.getLongPollServer(use_ssl=1)
 
+            self._check_chat_titles()
             self._add_event_handlers()
         except VkAPIError as e:
             log.exception('Connection failure: {}'.format(e.message))
@@ -90,7 +83,7 @@ class Bot(object):
             return False
 
     def _start_long_polling(self):
-        request_url = self.get_long_poll_server_url(self.long_poll_server['ts'])
+        request_url = self._get_long_poll_server_url(self.long_poll_server['ts'])
 
         while True:
             try:
@@ -99,10 +92,8 @@ class Bot(object):
                 response = None
                 pass
 
-            log.debug('Response: {}'.format(response))
-
             if response:
-                request_url = self.get_long_poll_server_url(response['ts'])
+                request_url = self._get_long_poll_server_url(response['ts'])
 
                 for update in response['updates']:
                     try:
@@ -119,20 +110,17 @@ class Bot(object):
                                  chat_title=event[5], text=event[6], attachments=event[7], random_id=event[8])
 
     def _handle_message(self, **fields):
-
         if fields['peer_id'] > CHAT_OFFSET:
             fields['is_chat'] = True
             fields['chat_id'] = fields['peer_id'] - CHAT_OFFSET
-            fields['user_id'] = fields['attachments'].get('from')
+            fields['user_id'] = int(fields['attachments'].get('from'))
             fields['source_act'] = fields['attachments'].get('source_act')
             fields['source_mid'] = fields['attachments'].get('source_mid')
             fields['source_old_text'] = fields['attachments'].get('source_old_text')
             fields['source_text'] = fields['attachments'].get('source_text')
         else:
             fields['is_chat'] = False
-            fields['user_id'] = str(fields['peer_id'])
-            fields['source_act'] = None
-            fields['source_mid'] = None
+            fields['user_id'] = fields['peer_id']
 
         fields['user'] = self.api.users.get(user_ids=fields['user_id'])[0]
 
@@ -166,7 +154,7 @@ class Bot(object):
 
         return False
 
-    def get_long_poll_server_url(self, ts_):
+    def _get_long_poll_server_url(self, ts_):
         return 'https://{server}?act=a_check&key={key}&ts={ts}&wait={wait}&mode={mode}\
                     &version={version}'.format(
             server=self.long_poll_server['server'], key=self.long_poll_server['key'], ts=ts_,
@@ -175,6 +163,10 @@ class Bot(object):
     def is_started(self):
         return self.start_time is not None
 
+    def set_chat_title(self, chat_id, chat_title):
+        self.chat_titles[chat_id] = chat_title
+        self._save_data()
+
     def _add_event_handlers(self):
         self.event_handlers = [
             EventHandler(events['add_message'], commands.status, text=['!s', '!status'],
@@ -182,11 +174,62 @@ class Bot(object):
             EventHandler(events['add_message'], commands.hello, lack_flags=(~message_flags['outbox'])),
             EventHandler(events['add_message'], commands.invite, is_chat=True, source_act='chat_invite_user',
                          source_mid=self.bot_user['id'], lack_flags=(~message_flags['outbox'])),
-            EventHandler(events['add_message'], commands.change_chat_title, is_chat=True, lack_flags=(~message_flags['outbox'])),
-            EventHandler(events['add_message'], commands.chat_title_update, is_chat=True, source_act='chat_title_update',
+            EventHandler(events['add_message'], commands.change_chat_title, is_chat=True,
                          lack_flags=(~message_flags['outbox'])),
-            EventHandler(events['add_message'], commands.help, text=['!h', '!help'])
+            EventHandler(events['add_message'], commands.chat_title_update, is_chat=True,
+                         source_act='chat_title_update',
+                         lack_flags=(~message_flags['outbox'])),
+            EventHandler(events['add_message'], commands.chat_invite, is_chat=True,
+                         source_act='chat_invite_user',
+                         lack_flags=(~message_flags['outbox'])),
+            EventHandler(events['add_message'], commands.chat_kick, is_chat=True,
+                         source_act='chat_kick_user',
+                         lack_flags=(~message_flags['outbox'])),
+            EventHandler(events['add_message'], commands.help, help_name='!h или !help',
+                         help_description='показать эту помощь', text=['!h', '!help'])
         ]
+
+    def _load_config(self):
+        self.config = configparser.ConfigParser()
+        self.config.read('config.ini')
+        self.name = self.config['DEFAULT']['Name']
+        self.version = self.config['DEFAULT']['Version']
+        self.vk_api_version = self.config['DEFAULT']['VkApiVersion']
+
+    def _load_data(self):
+        data_path = Path('data.json')
+        if data_path.is_file():
+            with data_path.open() as data_file:
+                self.data = json.load(data_file)
+        else:
+            with data_path.open(mode='w', encoding='utf-8') as data_file:
+                self.data = {
+                    'admins': [
+                        int(self.config['DEFAULT']['MaintainerId'])
+                    ],
+                    'chat_titles': {}
+                }
+                json.dump(self.data, data_file, ensure_ascii=False, indent=4, sort_keys=True)
+
+        self.admins = self.data['admins']
+        # convert keys to int
+        self.data['chat_titles'] = {int(k):v for k, v in self.data['chat_titles'].items()}
+        self.chat_titles = self.data['chat_titles']
+
+    def _save_data(self):
+        data_path = Path('data.json')
+        if data_path.is_file():
+            with data_path.open(mode='w', encoding='utf-8') as data_file:
+                json.dump(self.data, data_file, ensure_ascii=False, indent=4, sort_keys=True)
+
+    def _check_chat_titles(self):
+        for chat_id, locked_chat_title in self.chat_titles.items():
+            try:
+                chat_title = self.api.messages.getChat(chat_id=chat_id)
+                if chat_title['title'] is not locked_chat_title:
+                    self.api.messages.editChat(chat_id=chat_id, title=locked_chat_title)
+            except VkAPIError as e:
+                log.warning(e.message)
 
 
 class EventHandler(object):
@@ -196,6 +239,10 @@ class EventHandler(object):
         self.fields = fields
         self.help_name = fields.get('help_name')
         self.help_description = fields.get('help_description')
+
+
+def remove_urls(text):
+    return re.sub(r'(\S+\.\S{2,20})+', '[url_removed]', text, 0, 0)
 
 
 # start bot
