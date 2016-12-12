@@ -1,8 +1,7 @@
+import logging
 import os
 import random
 import re
-import logging
-import bot as botm
 from datetime import datetime
 
 log = logging.getLogger('vk-bot')
@@ -37,7 +36,8 @@ def help(bot, **fields):
 
 
 def hello(bot, **fields):
-    if re.match(r'при+ве+т(?:[\s,]+)(?:ма+рку+с|ma+rcu+s)', fields['text'], flags=re.IGNORECASE) \
+    if (re.match(r'при+ве+т(?:[\s,]+)(?:ма+рку+с|ma+rcu+s)', fields['text'], flags=re.IGNORECASE)
+                or re.match(r'(?:ма+рку+с|ma+rcu+s)(?:[\s,]+)при+ве+т', fields['text'], flags=re.IGNORECASE)) \
             if fields['is_chat'] else re.match(r'при+ве+т(?:\W+|$)', fields['text'], flags=re.IGNORECASE):
         emojies = ['\U0001F60E', '\U0001F60A', '\U0001F603', '\U0001F609']
         bot.api.messages.send(peer_id=fields['peer_id'],
@@ -77,16 +77,18 @@ def invite(bot, **fields):
                           message='Привет всем!')
     return True
 
+
 def chat_kick(bot, **fields):
     user = bot.api.users.get(user_ids=fields['source_mid'])[0]
     bot.api.messages.send(peer_id=fields['peer_id'],
                           message='Мы будем скучать по тебе, {}...'.format(user['first_name']))
     return True
 
+
 def chat_invite(bot, **fields):
     user = bot.api.users.get(user_ids=fields['source_mid'])[0]
     messages = [
-        'Ну и зачем ты пришёл, {}?'
+        'Ну и зачем ты пришёл, {name}?'
     ]
     bot.api.messages.send(peer_id=fields['peer_id'],
                           message=random.choice(messages).format(name=user['first_name']))
