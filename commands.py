@@ -2,7 +2,7 @@ import logging
 import os
 import random
 import re
-import datetime
+from datetime import datetime
 
 log = logging.getLogger('vk-bot')
 
