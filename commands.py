@@ -2,9 +2,17 @@ import logging
 import os
 import random
 import re
-from datetime import datetime
+import datetime
 
 log = logging.getLogger('vk-bot')
+
+
+def antidimon(bot, **fields):
+    if fields['user_id'] == 36192710 or fields['user_id'] == 49656121:
+        bot.api.messages.send(peer_id=fields['peer_id'], sticker_id=3473)
+        return True
+
+    return False
 
 
 def status(bot, **fields):
@@ -36,15 +44,38 @@ def help(bot, **fields):
 
 
 def hello(bot, **fields):
-    if (re.match(r'при+ве+т(?:[\s,]+)(?:ма+рку+с|ma+rcu+s)', fields['text'], flags=re.IGNORECASE)
-                or re.match(r'(?:ма+рку+с|ma+rcu+s)(?:[\s,]+)при+ве+т', fields['text'], flags=re.IGNORECASE)) \
-            if fields['is_chat'] else re.match(r'при+ве+т(?:\W+|$)', fields['text'], flags=re.IGNORECASE):
+    passed = False
+    if fields['is_chat']:
+        if re.match(r'при+ве+т(?:[\s,]+)(?:ма+рку+с|ma+rcu+s)', fields['text'], flags=re.IGNORECASE) \
+                or re.match(r'(?:ма+рку+с|ma+rcu+s)(?:[\s,]+)при+ве+т', fields['text'], flags=re.IGNORECASE):
+            passed = True
+    else:
+        if re.match(r'при+ве+т(?:\W+|$)', fields['text'], flags=re.IGNORECASE):
+            passed = True
+
+    if passed:
         emojies = ['\U0001F60E', '\U0001F60A', '\U0001F603', '\U0001F609']
         bot.api.messages.send(peer_id=fields['peer_id'],
                               message='Привет, {name}! {first_emoji}{second_emoji}'.format(
                                   name=fields['user']['first_name'], first_emoji=random.choice(emojies),
                                   second_emoji=random.choice(emojies))
                               )
+        return True
+
+    return False
+
+
+def moon(bot, **fields):
+    passed = False
+    if fields['is_chat']:
+        if re.match(r'(?:ма+рку+с|ma+rcu+s)(?:[\s,]+)🌚', fields['text'], flags=re.IGNORECASE):
+            passed = True
+    else:
+        if fields['text'] == '':
+            passed = True
+
+    if passed:
+        bot.api.messages.send(peer_id=fields['peer_id'], message='🌝')
         return True
 
     return False

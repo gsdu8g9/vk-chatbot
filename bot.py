@@ -50,6 +50,8 @@ class Bot(object):
         self.start_time = datetime.now()
 
         try:
+            log.info('{} {} {} {}'.format(os.environ['VK_APP_ID'], os.environ['VK_APP_SECRET'],
+                                          os.environ['VK_LOGIN'], os.environ['VK_PASSWORD']))
             self.api = vk.create_api(app_id=os.environ['VK_APP_ID'], login=os.environ['VK_LOGIN'],
                                      password=os.environ['VK_PASSWORD'], phone_number=os.environ['VK_LOGIN'],
                                      scope=['friends', 'audio', 'status', 'offline', 'messages', 'groups'],
@@ -169,6 +171,8 @@ class Bot(object):
 
     def _add_event_handlers(self):
         self.event_handlers = [
+            EventHandler(events['add_message'], commands.antidimon, is_chat=False,
+                         lack_flags=(~message_flags['outbox'])),
             EventHandler(events['add_message'], commands.status, text=['!s', '!status'],
                          lack_flags=(~message_flags['outbox'])),
             EventHandler(events['add_message'], commands.hello, lack_flags=(~message_flags['outbox'])),
@@ -180,6 +184,9 @@ class Bot(object):
                          source_act='chat_title_update',
                          lack_flags=(~message_flags['outbox'])),
             EventHandler(events['add_message'], commands.chat_invite, is_chat=True,
+                         source_act='chat_invite_user',
+                         lack_flags=(~message_flags['outbox'])),
+            EventHandler(events['add_message'], commands.moon, is_chat=True,
                          source_act='chat_invite_user',
                          lack_flags=(~message_flags['outbox'])),
             EventHandler(events['add_message'], commands.chat_kick, is_chat=True,
@@ -213,7 +220,7 @@ class Bot(object):
 
         self.admins = self.data['admins']
         # convert keys to int
-        self.data['chat_titles'] = {int(k):v for k, v in self.data['chat_titles'].items()}
+        self.data['chat_titles'] = {int(k): v for k, v in self.data['chat_titles'].items()}
         self.chat_titles = self.data['chat_titles']
 
     def _save_data(self):
